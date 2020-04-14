@@ -6,6 +6,7 @@ The toolbox allows for gradient waveforms to be designed that better utilize ava
 
 # NMR Biomedicine Optimization Review Paper
 To run the exmaples shown in our NMR Biomedicine manuscript entitled "Optimization methods for magnetic resonance imaging gradient waveform design." Click the "Launch Binder" button below and navigate to the Python folder.
+
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/cmr-group/gropt/nmrb_optimization)
 
 # Installation
