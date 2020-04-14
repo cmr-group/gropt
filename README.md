@@ -17,5 +17,4 @@ For MacOS you may need to change the compiler being used, in the first few lines
 
 See make.m for an example compile
 
-# More
-An example use case is shown in python/demo_v1.ipynb which github will render for you in the browser if you click on it.
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/cmr-group/gropt/tree/nmrb_optimization/master)
