@@ -5,7 +5,7 @@ A toolbox for MRI gradient optimization (GrOpt)
 The toolbox allows for gradient waveforms to be designed that better utilize available gradient hardware performance, while allowing for additional constraints to be flexibly added to control for a range of desired performances. Additionally, the optimization has been fine-tuned to operate in real-time, allowing for flexible implementation on vendor-agnostic scanner hardware for on-the-fly usage.
 
 # NMR Biomedicine Optimization Review Paper
-To run the exmaples shown in our NMR Biomedicine manuscript entitled "Optimization methods for magnetic resonance imaging gradient waveform design." Click the "Launch Binder" button below and navigate to the Python folder.
+To run the examples shown in our NMR Biomedicine manuscript entitled "Optimization methods for magnetic resonance imaging gradient waveform design." Click the "Launch Binder" button below and navigate to the Python folder.
 
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/cmr-group/gropt/nmrb_optimization)
 
