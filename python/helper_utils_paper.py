@@ -90,7 +90,7 @@ def get_min_TE_diff(params, target_bval, min_TE, max_TE, verbose = 0):
         params['TE'] = T_lo + (T_range)/2.0
         if verbose:
             print(' %.3f' % params['TE'], end='', flush=True)
-        G, ddebug = gropt.gropt(params)
+        G, ddebug = gropt.gropt(params, verbose)
         lim_break = ddebug[14]
         bval = get_bval(G, params)
         if bval > target_bval:
@@ -235,7 +235,24 @@ def plot_moments(G, T_readout, dt):
     mmt = np.cumsum(mm[2])*1e9
     plt.plot(mmt/np.abs(mmt).max())
     plt.axhline(0, color='k')
+    
+    
+def plot_moments_actual(G, T_readout, dt):
 
+    TE = G.size*dt*1e3 + T_readout
+    tINV = int(np.floor(TE/dt/1.0e3/2.0))
+    INV = np.ones(G.size)
+    INV[tINV:] = -1
+    Nm = 5
+    tvec = np.arange(G.size)*dt
+    tMat = np.zeros((Nm, G.size))
+    for mm in range(Nm):
+        tMat[mm] = tvec**mm
+
+    moments = dt*tMat@(G*INV)
+    mm = dt*tMat * (G*INV)[np.newaxis,:]
+    
+    return mm
 
 def get_moment_plots(G, T_readout, dt, diffmode = 1):
 
@@ -253,7 +270,7 @@ def get_moment_plots(G, T_readout, dt, diffmode = 1):
 
     #moments = np.abs(GAMMA*dt*tMat@(G*INV))
     #mm = GAMMA*dt*tMat * (G*INV)[np.newaxis,:]
-    moments = np.abs(dt*tMat@(G*INV))
+    moments = dt*tMat@(G*INV)
     mm = dt*tMat * (G*INV)[np.newaxis,:]
 
     out = []
@@ -262,6 +279,180 @@ def get_moment_plots(G, T_readout, dt, diffmode = 1):
         out.append(mmt)
 
     return out
+
+def get_moment_plots_orig(G, T_readout, dt, diffmode = 1):
+
+    TE = G.size*dt*1e3 + T_readout
+    tINV = int(np.floor(TE/dt/1.0e3/2.0))
+    GAMMA   = 42.58e3;     # units: 1/(mT x ms) 
+    INV = np.ones(G.size)
+    if diffmode > 0:
+        INV[tINV:] = -1
+    Nm = 5
+    tvec = np.arange(G.size)*dt     # units: sec
+    tMat = np.zeros((Nm, G.size))
+    for mm in range(Nm):
+        tMat[mm] = tvec**mm
+
+    moments = np.abs(GAMMA*dt*tMat@(G*INV))
+    mm = GAMMA*dt*tMat * (G*INV)[np.newaxis,:]     # units: (1/(mT x ms))x(sec)x(mT/m)...seems wrong
+                                                   # units: (sec)x(mT/m)...seems wrong
+    out = []
+    for i in range(Nm):
+        mmt = np.cumsum(mm[i])
+        out.append(mmt)
+
+    return out
+
+def get_moment_plots_arfi(G, T_readout, dt):
+
+    TE = G.size*dt*1e3 + T_readout
+    tINV = int(np.floor(TE/dt/1.0e3/2.0))
+    INV = np.ones(G.size)
+    INV[tINV:] = -1
+    Nm = 2
+    tvec = np.arange(G.size)*dt
+    tMat = np.zeros((Nm, G.size))
+    for mm in range(Nm):
+        tMat[mm] = tvec**mm
+
+    moments = dt*tMat@(G*INV)
+    mm = dt*tMat * (G*INV)[np.newaxis,:]
+
+    out = []
+    for i in range(Nm):
+        mmt = np.cumsum(mm[i])
+        out.append(mmt)
+
+    return out, INV
+
+
+def plot_waveform_new(G, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True, plot_maxwell = True,
+                  suptitle = '', eddy_lines=[], eddy_range = [1e-3,120,1000]):
+    sns.set()
+    sns.set_context("talk")
+    dt = params['dt'];
+    
+    TE = params['TE']
+    T_readout = params['T_readout']
+    diffmode = 0
+    if params['mode'][:4] == 'diff':
+        diffmode = 1
+
+    tt = np.arange(G.size) * dt * 1e3
+    tINV = TE/2.0
+    
+    N_plots = 1
+    if plot_moments: 
+        N_plots += 1
+    if plot_eddy: 
+        N_plots += 1
+    if plot_pns: 
+        N_plots += 1
+    if plot_slew: 
+        N_plots += 1
+    if plot_maxwell: 
+        N_plots += 1
+        
+    N_rows = 1 + (N_plots-1)//3
+    N_cols = ceil(N_plots/N_rows)
+
+    f, axarr = plt.subplots(N_rows, N_cols, squeeze=False, figsize=(12, N_rows*3.5))
+    
+    i_row = 0
+    i_col = 0
+
+    bval = get_bval(G, params)
+        
+    axarr[i_row, i_col].plot(tt, G*1000)
+    axarr[i_row, i_col].set_title('Gradient')
+    axarr[i_row, i_col].set_xlabel('Time [ms]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
+    
+    i_col += 1
+    if i_col >= N_cols:
+        i_col = 0
+        i_row += 1
+
+    if plot_slew:
+        axarr[i_row, i_col].plot(tt[:-1], np.diff(G)/dt)
+        axarr[i_row, i_col].set_title('Slew')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    mm = get_moment_plots(G, T_readout, dt, diffmode)                       
+    if plot_moments:
+        for i in range(3):
+            mmt = mm[i]
+            axarr[i_row, i_col].plot(tt, mmt/np.abs(mmt).max())
+        axarr[i_row, i_col].set_ylabel('$M_{n}$ [AU]')        
+        axarr[i_row, i_col].set_title('Moments')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_eddy:
+        all_lam = np.linspace(eddy_range[0],eddy_range[1],eddy_range[2])
+        all_e = []
+        for lam in all_lam:
+            lam = lam * 1.0e-3
+            r = np.diff(np.exp(-np.arange(G.size+1)*dt/lam))[::-1]
+            all_e.append(100*r@G)
+        
+        
+        for e in eddy_lines:
+            axarr[i_row, i_col].axvline(e, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(all_lam, all_e)
+        axarr[i_row, i_col].set_title('Eddy Currents')
+        axarr[i_row, i_col].set_xlabel('$\lambda$ [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_pns:
+        pns = np.abs(get_stim(G, dt))
+
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(tt[:-1], pns)
+        axarr[i_row, i_col].set_title('PNS')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_maxwell:
+        GAM = 267.52e3 # [rad/(mT x sec)]
+        tINV = int(np.floor(TE/params['dt']/1.0e3/2.0))
+        INV = np.ones(G.size)
+        INV[tINV:] = -1
+        tt = np.arange(G.size)*params['dt']*1e3
+        conPhase = np.cumsum(1000*INV*(G**2)*GAM*dt/1.0e3)
+        axarr[i_row, i_col].plot(tt,conPhase)
+        axarr[i_row, i_col].set_title('Concominant Phase')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        axarr[i_row, i_col].set_ylabel('Maxwell Index [AU]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1            
+            
+    plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95])
+    
+    return bval, axarr
+
 
 def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True,
                   suptitle = '', eddy_lines=[], eddy_range = [1e-3,120,1000]):
@@ -306,8 +497,8 @@ def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = T
     axarr[i_row, i_col].set_xlabel('Time [ms]')
     axarr[i_row, i_col].set_ylabel('G [mT/m]')
     
-    axarr[i_row, i_col].set_ylim([-np.max(G*1000)*1.1,np.max(G*1000)*1.1])
-    #axarr[i_row, i_col].set_xlim([0,120])
+    axarr[i_row, i_col].set_ylim([-55,55])
+    axarr[i_row, i_col].set_xlim([0,120])
     
     i_col += 1
     if i_col >= N_cols:
@@ -329,14 +520,7 @@ def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = T
         #axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
         for i in range(3):
             mmt = mm[i]
-            #print('For %fth moment, maximum value = %.20f' % (i, np.abs(mmt).max()))
-            #if i == 0:
-            #    axarr[i_row, i_col].plot(tt, mmt/0.00079062941385549810)
-            #if i == 1:
-            #    axarr[i_row, i_col].plot(tt, mmt/0.00006758910499999998)
-            #if i == 2:
-            #    axarr[i_row, i_col].plot(tt, mmt/0.00000703985928084999)                
-            axarr[i_row, i_col].plot(tt, mmt/np.abs(mmt).max())                            
+            axarr[i_row, i_col].plot(tt, mmt/np.abs(mmt).max())
         axarr[i_row, i_col].set_ylabel('$M_{n}$ [AU]')        
         axarr[i_row, i_col].set_title('Moments')
         axarr[i_row, i_col].set_xlabel('Time [ms]')
@@ -374,7 +558,7 @@ def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = T
     if plot_pns:
         pns = np.abs(get_stim(G, dt))
 
-        axarr[i_row, i_col].axhline(0.8, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
         
         axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
         axarr[i_row, i_col].plot(tt[:-1], pns)
@@ -388,6 +572,126 @@ def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = T
     plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95])
     
     return bval
+
+
+def plot_waveform_arfi(G, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True,
+                  suptitle = '', eddy_lines=[], eddy_range = [1e-3,120,1000]):
+    sns.set()
+    sns.set_context("talk")
+    dt = params['dt'];
+    
+    TE = params['TE']
+    T_readout = params['T_readout']
+    diffmode = 0
+    if params['mode'][:4] == 'diff':
+        diffmode = 1
+
+    #dt = (TE-T_readout) * 1.0e-3 / G.size
+    tt = np.arange(G.size) * dt * 1e3
+    tINV = TE/2.0
+    
+    N_plots = 1
+    if plot_moments: 
+        N_plots += 1
+    if plot_eddy: 
+        N_plots += 1
+    if plot_pns: 
+        N_plots += 1
+    if plot_slew: 
+        N_plots += 1
+
+    N_rows = 1 + (N_plots-1)//3
+    N_cols = ceil(N_plots/N_rows)
+
+    f, axarr = plt.subplots(N_rows, N_cols, squeeze=False, figsize=(12, N_rows*3.5))
+    
+    i_row = 0
+    i_col = 0
+
+    bval = get_bval(G, params)
+        
+    #if diffmode > 1:
+    #    axarr[i_row, i_col].axvline(tINV, linestyle='--', color='0.7')
+    axarr[i_row, i_col].plot(tt, G*1000)
+    axarr[i_row, i_col].set_title('Gradient')
+    axarr[i_row, i_col].set_xlabel('Time [ms]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
+    
+    axarr[i_row, i_col].set_ylim([-55,55])
+    axarr[i_row, i_col].set_xlim([0,120])
+    
+    i_col += 1
+    if i_col >= N_cols:
+        i_col = 0
+        i_row += 1
+
+    if plot_slew:
+        axarr[i_row, i_col].plot(tt[:-1], np.diff(G)/dt)
+        axarr[i_row, i_col].set_title('Slew')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    mm = get_moment_plots(G, T_readout, dt, diffmode)                       
+    if plot_moments:
+        #axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        for i in range(3):
+            mmt = mm[i]
+            axarr[i_row, i_col].plot(tt, mmt/np.abs(mmt).max())
+        axarr[i_row, i_col].set_ylabel('$M_{n}$ [AU]')        
+        axarr[i_row, i_col].set_title('Moments')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        
+        axarr[i_row, i_col].set_xlim([0,120])
+        axarr[i_row, i_col].set_ylim([-1.1,1.1])        
+        
+        
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_eddy:
+        all_lam = np.linspace(eddy_range[0],eddy_range[1],eddy_range[2])
+        all_e = []
+        for lam in all_lam:
+            lam = lam * 1.0e-3
+            r = np.diff(np.exp(-np.arange(G.size+1)*dt/lam))[::-1]
+            all_e.append(100*r@G)
+        
+        
+        for e in eddy_lines:
+            axarr[i_row, i_col].axvline(e, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(all_lam, all_e)
+        axarr[i_row, i_col].set_title('Eddy Currents')
+        axarr[i_row, i_col].set_xlabel('$\lambda$ [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_pns:
+        pns = np.abs(get_stim(G, dt))
+
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(tt[:-1], pns)
+        axarr[i_row, i_col].set_title('PNS')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95])
+    
+    return bval, axarr
 
     
 def plot_waveform_overlap(G, G_, TE, TE_, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True,
@@ -429,10 +733,10 @@ def plot_waveform_overlap(G, G_, TE, TE_, params, plot_moments = True, plot_eddy
     #if diffmode > 1:
     #    axarr[i_row, i_col].axvline(tINV, linestyle='--', color='0.7')
     axarr[i_row, i_col].plot(tt, G*1000, color='b')
-    axarr[i_row, i_col].plot(tt_, G_*1000, color='r', linestyle='dashed')
+    axarr[i_row, i_col].plot(tt_, G_*1000, color='r')
     axarr[i_row, i_col].set_title('Gradient')
     axarr[i_row, i_col].set_xlabel('Time [ms]')
-    axarr[i_row, i_col].set_ylabel('G(t) [mT/m]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
     i_col += 1
     if i_col >= N_cols:
         i_col = 0
@@ -440,10 +744,9 @@ def plot_waveform_overlap(G, G_, TE, TE_, params, plot_moments = True, plot_eddy
 
     if plot_slew:
         axarr[i_row, i_col].plot(tt[:-1], np.diff(G)/dt, color='b')
-        axarr[i_row, i_col].plot(tt_[:-1], np.diff(G_)/dt, color='r', linestyle='dashed')       
+        axarr[i_row, i_col].plot(tt_[:-1], np.diff(G_)/dt, color='r')        
         axarr[i_row, i_col].set_title('Slew')
         axarr[i_row, i_col].set_xlabel('Time [ms]')
-        axarr[i_row, i_col].set_ylabel('S(t) [mT/m/ms]')
 
         i_col += 1
         if i_col >= N_cols:
@@ -489,14 +792,13 @@ def plot_waveform_overlap(G, G_, TE, TE_, params, plot_moments = True, plot_eddy
         pns = np.abs(get_stim(G, dt))
         pns_ = np.abs(get_stim(G_, dt))
 
-        axarr[i_row, i_col].axhline(0.8, linestyle=':', color='k')
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color='k')
         
         #axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
         axarr[i_row, i_col].plot(tt[:-1], pns, color='b')
-        axarr[i_row, i_col].plot(tt_[:-1], pns_, color='r', linestyle='dashed')
+        axarr[i_row, i_col].plot(tt_[:-1], pns_, color='r')
         axarr[i_row, i_col].set_title('PNS')
         axarr[i_row, i_col].set_xlabel('Time [ms]')
-        axarr[i_row, i_col].set_ylabel('PNS(t) [%]')
         i_col += 1
         if i_col >= N_cols:
             i_col = 0
@@ -764,10 +1066,10 @@ def plot_waveform_simple_overlap(G, G_, dt, plot_moments = True, plot_eddy = Tru
     i_col = 0
 
     axarr[i_row, i_col].plot(tt, G, color='b')
-    axarr[i_row, i_col].plot(tt_, G_, color='r', linestyle='dashed')
+    axarr[i_row, i_col].plot(tt_, G_, color='r')
     axarr[i_row, i_col].set_title('Gradient')
     axarr[i_row, i_col].set_xlabel('Time [ms]')
-    axarr[i_row, i_col].set_ylabel('G(t) [mT/m]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
     i_col += 1
     if i_col >= N_cols:
         i_col = 0
@@ -775,11 +1077,11 @@ def plot_waveform_simple_overlap(G, G_, dt, plot_moments = True, plot_eddy = Tru
 
     if plot_slew:
         axarr[i_row, i_col].plot(tt[:-1], np.diff(G)/dt, color='b')
-        axarr[i_row, i_col].plot(tt_[:-1], np.diff(G_)/(dt*1000), color='r', linestyle='dashed')
+        axarr[i_row, i_col].plot(tt_[:-1], np.diff(G_)/(dt*1000), color='r')
         
         axarr[i_row, i_col].set_title('Slew Rate')
         axarr[i_row, i_col].set_xlabel('Time [ms]')
-        axarr[i_row, i_col].set_ylabel('S(t) [mT/m/ms]')
+        axarr[i_row, i_col].set_ylabel('SR [mT/m/ms]')
 
         i_col += 1
         if i_col >= N_cols:
@@ -796,7 +1098,7 @@ def plot_waveform_simple_overlap(G, G_, dt, plot_moments = True, plot_eddy = Tru
             mmt_ = mm_[i]
             if i == 0:
                 axarr[i_row, i_col].plot(tt, mmt, color='b')
-                axarr[i_row, i_col].plot(tt_, mmt_, color='r', linestyle='dashed')                
+                axarr[i_row, i_col].plot(tt_, mmt_, color='r')                
             if i == 1:
                 axarr[i_row, i_col].plot(tt, mmt)
                 axarr[i_row, i_col].plot(tt_, mmt_)                
@@ -806,7 +1108,7 @@ def plot_waveform_simple_overlap(G, G_, dt, plot_moments = True, plot_eddy = Tru
         
         axarr[i_row, i_col].set_title('Moment')
         axarr[i_row, i_col].set_xlabel('Time [ms]')
-        axarr[i_row, i_col].set_ylabel('M$_{0}$(t) [mT/m x ms]')
+        axarr[i_row, i_col].set_ylabel('M$_{0}$ [mT/m x ms]')
 
         i_col += 1
         if i_col >= N_cols:
@@ -921,6 +1223,270 @@ def plot_waveform_flow(G, dt, Nm, plot_moments = True, plot_slew = True):
     plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95]) 
     
     return mm, axarr
+
+
+def plot_waveform_EC(G, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True,
+                  suptitle = '', eddy_lines=[], eddy_range = [1e-3,120,1000]):
+    sns.set()
+    sns.set_context("talk")
+    dt = params['dt'];
+    
+    TE = params['TE']
+    T_readout = params['T_readout']
+    diffmode = 0
+    if params['mode'][:4] == 'diff':
+        diffmode = 1
+
+    dt = (TE-T_readout) * 1.0e-3 / G.size
+    tt = np.arange(G.size) * dt * 1e3
+    tINV = TE/2.0
+    
+    N_plots = 1
+    if plot_moments: 
+        N_plots += 1
+    if plot_eddy: 
+        N_plots += 1
+    if plot_pns: 
+        N_plots += 1
+    if plot_slew: 
+        N_plots += 1
+
+    N_rows = 1 + (N_plots-1)//3
+    N_cols = ceil(N_plots/N_rows)
+
+    f, axarr = plt.subplots(N_rows, N_cols, squeeze=False, figsize=(12, N_rows*3.5))
+    
+    i_row = 0
+    i_col = 0
+
+    bval = get_bval(G, params)
+        
+    axarr[i_row, i_col].plot(tt, G*1000)
+    axarr[i_row, i_col].set_title('Gradient')
+    axarr[i_row, i_col].set_xlabel('Time [ms]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
+    
+    i_col += 1
+    if i_col >= N_cols:
+        i_col = 0
+        i_row += 1
+
+    if plot_slew:
+        axarr[i_row, i_col].plot(tt[:-1], np.diff(G)/dt)
+        axarr[i_row, i_col].set_title('Slew')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    mm = get_moment_plots(G, T_readout, (TE-T_readout) * 1.0e-3 / G.size, 0)            
+            
+    if plot_moments:
+        for i in range(2):
+            mmt = mm[i]
+            if i == 0:
+                axarr[i_row, i_col].plot(tt, mmt*1e6)
+            if i == 1:
+                axarr[i_row, i_col].plot(tt, mmt*1e6)
+            if i == 2:
+                axarr[i_row, i_col].plot(tt, mmt*1e9)
+            axarr[i_row, i_col].set_ylabel('$M_{n}$ [mT/m x ms$^{n+1}$]')        
+        axarr[i_row, i_col].set_title('Moment(s)')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        axarr[i_row, i_col].legend(('$M_{0}$', '$M_{1}$','$M_{2}$'),prop={'size': 10},labelspacing=-0.5,loc=0)
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_eddy:
+        all_lam = np.linspace(eddy_range[0],eddy_range[1],eddy_range[2])
+        all_e = []
+        for lam in all_lam:
+            lam = lam * 1.0e-3
+            r = np.diff(np.exp(-np.arange(G.size+1)*dt/lam))[::-1]
+            all_e.append(100*r@G)
+        
+        
+        for e in eddy_lines:
+            axarr[i_row, i_col].axvline(e, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(all_lam, all_e)
+        axarr[i_row, i_col].set_title('Eddy Currents')
+        axarr[i_row, i_col].set_xlabel('$\lambda$ [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_pns:
+        pns = np.abs(get_stim(G, dt))
+
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(tt[:-1], pns)
+        axarr[i_row, i_col].set_title('PNS')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95])
+    
+    return mm, axarr
+
+def plot_waveform_flow_EC(G1, G2, params, plot_moments = True, plot_eddy = True, plot_pns = True, plot_slew = True,
+                  suptitle = '', eddy_lines=[], eddy_range = [1e-3,120,1000]):
+    sns.set()
+    sns.set_context("talk")
+    dt = params['dt'];
+    
+    TE1 = params['TE1']
+    T_readout1 = params['T_readout1']
+    diffmode = 0
+    if params['mode'][:4] == 'diff':
+        diffmode = 1
+
+    dt1 = (TE1-T_readout1) * 1.0e-3 / G1.size
+    tt1 = np.arange(G1.size) * dt1 * 1e3
+    tINV1 = TE1/2.0
+    
+    TE2 = params['TE2']
+    T_readout2 = params['T_readout2']
+    diffmode = 0
+    if params['mode'][:4] == 'diff':
+        diffmode = 1
+
+    dt2 = (TE2-T_readout2) * 1.0e-3 / G2.size
+    tt2 = np.arange(G2.size) * dt2 * 1e3
+    tINV2 = TE2/2.0
+    
+    N_plots = 1
+    if plot_moments: 
+        N_plots += 1
+    if plot_eddy: 
+        N_plots += 1
+    if plot_pns: 
+        N_plots += 1
+    if plot_slew: 
+        N_plots += 1
+
+    N_rows = 1 + (N_plots-1)//3
+    N_cols = ceil(N_plots/N_rows)
+
+    f, axarr = plt.subplots(N_rows, N_cols, squeeze=False, figsize=(12, N_rows*3.5))
+    
+    i_row = 0
+    i_col = 0
+
+    bval1 = get_bval(G1, params)
+    bval2 = get_bval(G2, params)
+        
+    axarr[i_row, i_col].plot(tt1, G1*1000)
+    axarr[i_row, i_col].plot(tt2, G2*1000)
+    axarr[i_row, i_col].set_title('Gradient')
+    axarr[i_row, i_col].set_xlabel('Time [ms]')
+    axarr[i_row, i_col].set_ylabel('G [mT/m]')
+    
+    i_col += 1
+    if i_col >= N_cols:
+        i_col = 0
+        i_row += 1
+
+    if plot_slew:
+        axarr[i_row, i_col].plot(tt1[:-1], np.diff(G1)/dt1)
+        axarr[i_row, i_col].plot(tt2[:-1], np.diff(G2)/dt2)        
+        axarr[i_row, i_col].set_title('Slew')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    mm1 = get_moment_plots(G1*1000, T_readout1, (TE1-T_readout1) * 1.0e-3 / G1.size, 0)            
+    mm2 = get_moment_plots(G2*1000, T_readout2, (TE2-T_readout2) * 1.0e-3 / G2.size, 0)            
+    
+    if plot_moments:
+        for i in range(3):
+            mmt1 = mm1[i]
+            if i == 0:
+                axarr[i_row, i_col].plot(tt1, mmt1*1e3)
+            if i == 1:
+                axarr[i_row, i_col].plot(tt1, mmt1*1e6)
+            if i == 2:
+                axarr[i_row, i_col].plot(tt1, mmt1*1e9)
+            axarr[i_row, i_col].set_ylabel('$M_{n}$ [mT/m x ms$^{n+1}$]')        
+            
+        for i in range(3):
+            mmt2 = mm2[i]
+            if i == 0:
+                axarr[i_row, i_col].plot(tt2, mmt2*1e3)
+            if i == 1:
+                axarr[i_row, i_col].plot(tt2, mmt2*1e6)
+            if i == 2:
+                axarr[i_row, i_col].plot(tt2, mmt2*1e9)
+            axarr[i_row, i_col].set_ylabel('$M_{n}$ [mT/m x ms$^{n+1}$]')        
+            
+        axarr[i_row, i_col].set_title('Moment(s)')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        axarr[i_row, i_col].legend(('$M_{0}$', '$M_{1}$','$M_{2}$'),prop={'size': 10},labelspacing=-0.5,loc=0)
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_eddy:
+        all_lam = np.linspace(eddy_range[0],eddy_range[1],eddy_range[2])
+        all_e1 = []
+        all_e2 = []        
+        for lam in all_lam:
+            lam = lam * 1.0e-3
+            r1 = np.diff(np.exp(-np.arange(G1.size+1)*dt1/lam))[::-1]
+            all_e1.append(100*r1@G1)
+            r2 = np.diff(np.exp(-np.arange(G2.size+1)*dt2/lam))[::-1]
+            all_e2.append(100*r2@G2)
+        
+        for e in eddy_lines:
+            axarr[i_row, i_col].axvline(e, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        
+        axarr[i_row, i_col].plot(all_lam, all_e1)
+        axarr[i_row, i_col].plot(all_lam, all_e2)
+        axarr[i_row, i_col].plot(all_lam, np.abs(np.subtract(all_e1,all_e2)))        
+        axarr[i_row, i_col].set_title('Eddy Currents')
+        axarr[i_row, i_col].set_xlabel('$\lambda$ [ms]')
+        axarr[i_row, i_col].legend(('$EC_{1}$', '$EC_{2}$','$|EC_{1}-EC_{2}|$'),prop={'size': 10},labelspacing=-0.1,loc=0)
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    if plot_pns:
+        pns1 = np.abs(get_stim(G1, dt1))
+        pns2 = np.abs(get_stim(G2, dt2))
+        
+        axarr[i_row, i_col].axhline(1.0, linestyle=':', color=(0.8, 0.1, 0.1, 0.8))
+        axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
+        axarr[i_row, i_col].plot(tt1[:-1], pns1)
+        axarr[i_row, i_col].plot(tt2[:-1], pns2)
+        axarr[i_row, i_col].set_title('PNS')
+        axarr[i_row, i_col].set_xlabel('Time [ms]')
+        i_col += 1
+        if i_col >= N_cols:
+            i_col = 0
+            i_row += 1
+
+    plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1, 0.95])
+    
+    return mm1, mm2, axarr
     
 def plot_waveform_flow_overlap(G, G_, dt, Nm, plot_moments = True, plot_slew = True):
     sns.set()
@@ -1084,25 +1650,25 @@ def monopolar_diffusion(params):
     SR_Max = params['smax']/1000
     GAM = 2*np.pi*42.58e3
     zeta = (h/SR_Max)*1e-3
-    Delta = abs((zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))/((- (zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))**3 + ((GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (- 3*params['b'] - GAM**2*params['T_90']**3*h**2 + GAM**2*params['T_180']**3*h**2 + GAM**2*params['T_readout']**3*h**2 + (8*GAM**2*h**2*zeta**3)/5 - 3*GAM**2*params['T_90']*params['T_180']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_180']*h**2 - 3*GAM**2*params['T_90']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_readout']*h**2 + 3*GAM**2*params['T_180']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_180']**2*params['T_readout']*h**2 - (7*GAM**2*params['T_90']*h**2*zeta**2)/2 + 3*GAM**2*params['T_90']**2*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/2 + 3*GAM**2*params['T_180']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/2 + 3*GAM**2*params['T_readout']**2*h**2*zeta - 6*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 6*GAM**2*params['T_90']*params['T_180']*h**2*zeta - 6*GAM**2*params['T_90']*params['T_readout']*h**2*zeta + 6*GAM**2*params['T_180']*params['T_readout']*h**2*zeta)/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**2)**(1/2) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (- 3*params['b'] - GAM**2*params['T_90']**3*h**2 + GAM**2*params['T_180']**3*h**2 + GAM**2*params['T_readout']**3*h**2 + (8*GAM**2*h**2*zeta**3)/5 - 3*GAM**2*params['T_90']*params['T_180']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_180']*h**2 - 3*GAM**2*params['T_90']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_readout']*h**2 + 3*GAM**2*params['T_180']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_180']**2*params['T_readout']*h**2 - (7*GAM**2*params['T_90']*h**2*zeta**2)/2 + 3*GAM**2*params['T_90']**2*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/2 + 3*GAM**2*params['T_180']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/2 + 3*GAM**2*params['T_readout']**2*h**2*zeta - 6*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 6*GAM**2*params['T_90']*params['T_180']*h**2*zeta - 6*GAM**2*params['T_90']*params['T_readout']*h**2*zeta + 6*GAM**2*params['T_180']*params['T_readout']*h**2*zeta)/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**(1/3) + ((((GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (3*(- (GAM**2*params['T_90']**3*h**2)/3 + GAM**2*params['T_90']**2*params['T_180']*h**2 + GAM**2*params['T_90']**2*params['T_readout']*h**2 + GAM**2*params['T_90']**2*h**2*zeta - GAM**2*params['T_90']*params['T_180']**2*h**2 - 2*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 2*GAM**2*params['T_90']*params['T_180']*h**2*zeta - GAM**2*params['T_90']*params['T_readout']**2*h**2 - 2*GAM**2*params['T_90']*params['T_readout']*h**2*zeta - (7*GAM**2*params['T_90']*h**2*zeta**2)/6 + (GAM**2*params['T_180']**3*h**2)/3 + GAM**2*params['T_180']**2*params['T_readout']*h**2 + GAM**2*params['T_180']**2*h**2*zeta + GAM**2*params['T_180']*params['T_readout']**2*h**2 + 2*GAM**2*params['T_180']*params['T_readout']*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/6 + (GAM**2*params['T_readout']**3*h**2)/3 + GAM**2*params['T_readout']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/6 + (8*GAM**2*h**2*zeta**3)/15 - params['b']))/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**2 - (zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))**3)**(1/2) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (3*(- (GAM**2*params['T_90']**3*h**2)/3 + GAM**2*params['T_90']**2*params['T_180']*h**2 + GAM**2*params['T_90']**2*params['T_readout']*h**2 + GAM**2*params['T_90']**2*h**2*zeta - GAM**2*params['T_90']*params['T_180']**2*h**2 - 2*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 2*GAM**2*params['T_90']*params['T_180']*h**2*zeta - GAM**2*params['T_90']*params['T_readout']**2*h**2 - 2*GAM**2*params['T_90']*params['T_readout']*h**2*zeta - (7*GAM**2*params['T_90']*h**2*zeta**2)/6 + (GAM**2*params['T_180']**3*h**2)/3 + GAM**2*params['T_180']**2*params['T_readout']*h**2 + GAM**2*params['T_180']**2*h**2*zeta + GAM**2*params['T_180']*params['T_readout']**2*h**2 + 2*GAM**2*params['T_180']*params['T_readout']*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/6 + (GAM**2*params['T_readout']**3*h**2)/3 + GAM**2*params['T_readout']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/6 + (8*GAM**2*h**2*zeta**3)/15 - params['b']))/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**(1/3) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)/(2*GAM**2*h**2))
+    Delta = np.real((zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))/((- (zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))**3 + ((GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (- 3*params['b'] - GAM**2*params['T_90']**3*h**2 + GAM**2*params['T_180']**3*h**2 + GAM**2*params['T_readout']**3*h**2 + (8*GAM**2*h**2*zeta**3)/5 - 3*GAM**2*params['T_90']*params['T_180']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_180']*h**2 - 3*GAM**2*params['T_90']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_readout']*h**2 + 3*GAM**2*params['T_180']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_180']**2*params['T_readout']*h**2 - (7*GAM**2*params['T_90']*h**2*zeta**2)/2 + 3*GAM**2*params['T_90']**2*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/2 + 3*GAM**2*params['T_180']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/2 + 3*GAM**2*params['T_readout']**2*h**2*zeta - 6*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 6*GAM**2*params['T_90']*params['T_180']*h**2*zeta - 6*GAM**2*params['T_90']*params['T_readout']*h**2*zeta + 6*GAM**2*params['T_180']*params['T_readout']*h**2*zeta)/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**2)**(1/2) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (- 3*params['b'] - GAM**2*params['T_90']**3*h**2 + GAM**2*params['T_180']**3*h**2 + GAM**2*params['T_readout']**3*h**2 + (8*GAM**2*h**2*zeta**3)/5 - 3*GAM**2*params['T_90']*params['T_180']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_180']*h**2 - 3*GAM**2*params['T_90']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_90']**2*params['T_readout']*h**2 + 3*GAM**2*params['T_180']*params['T_readout']**2*h**2 + 3*GAM**2*params['T_180']**2*params['T_readout']*h**2 - (7*GAM**2*params['T_90']*h**2*zeta**2)/2 + 3*GAM**2*params['T_90']**2*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/2 + 3*GAM**2*params['T_180']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/2 + 3*GAM**2*params['T_readout']**2*h**2*zeta - 6*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 6*GAM**2*params['T_90']*params['T_180']*h**2*zeta - 6*GAM**2*params['T_90']*params['T_readout']*h**2*zeta + 6*GAM**2*params['T_180']*params['T_readout']*h**2*zeta)/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**(1/3) + ((((GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (3*(- (GAM**2*params['T_90']**3*h**2)/3 + GAM**2*params['T_90']**2*params['T_180']*h**2 + GAM**2*params['T_90']**2*params['T_readout']*h**2 + GAM**2*params['T_90']**2*h**2*zeta - GAM**2*params['T_90']*params['T_180']**2*h**2 - 2*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 2*GAM**2*params['T_90']*params['T_180']*h**2*zeta - GAM**2*params['T_90']*params['T_readout']**2*h**2 - 2*GAM**2*params['T_90']*params['T_readout']*h**2*zeta - (7*GAM**2*params['T_90']*h**2*zeta**2)/6 + (GAM**2*params['T_180']**3*h**2)/3 + GAM**2*params['T_180']**2*params['T_readout']*h**2 + GAM**2*params['T_180']**2*h**2*zeta + GAM**2*params['T_180']*params['T_readout']**2*h**2 + 2*GAM**2*params['T_180']*params['T_readout']*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/6 + (GAM**2*params['T_readout']**3*h**2)/3 + GAM**2*params['T_readout']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/6 + (8*GAM**2*h**2*zeta**3)/15 - params['b']))/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**2 - (zeta**2/12 + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**2/(4*GAM**4*h**4))**3)**(1/2) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)**3/(8*GAM**6*h**6) - (3*(- (GAM**2*params['T_90']**3*h**2)/3 + GAM**2*params['T_90']**2*params['T_180']*h**2 + GAM**2*params['T_90']**2*params['T_readout']*h**2 + GAM**2*params['T_90']**2*h**2*zeta - GAM**2*params['T_90']*params['T_180']**2*h**2 - 2*GAM**2*params['T_90']*params['T_180']*params['T_readout']*h**2 - 2*GAM**2*params['T_90']*params['T_180']*h**2*zeta - GAM**2*params['T_90']*params['T_readout']**2*h**2 - 2*GAM**2*params['T_90']*params['T_readout']*h**2*zeta - (7*GAM**2*params['T_90']*h**2*zeta**2)/6 + (GAM**2*params['T_180']**3*h**2)/3 + GAM**2*params['T_180']**2*params['T_readout']*h**2 + GAM**2*params['T_180']**2*h**2*zeta + GAM**2*params['T_180']*params['T_readout']**2*h**2 + 2*GAM**2*params['T_180']*params['T_readout']*h**2*zeta + (7*GAM**2*params['T_180']*h**2*zeta**2)/6 + (GAM**2*params['T_readout']**3*h**2)/3 + GAM**2*params['T_readout']**2*h**2*zeta + (7*GAM**2*params['T_readout']*h**2*zeta**2)/6 + (8*GAM**2*h**2*zeta**3)/15 - params['b']))/(4*GAM**2*h**2) + (zeta**2*(GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta))/(16*GAM**2*h**2))**(1/3) + (GAM**2*params['T_180']*h**2 - GAM**2*params['T_90']*h**2 + GAM**2*params['T_readout']*h**2 + GAM**2*h**2*zeta)/(2*GAM**2*h**2))
     delta = Delta + params['T_90'] - params['T_180'] - params['T_readout'] - zeta
     b = GAM**2*h**2*(delta**2*(Delta-delta/3) + zeta**3/30 - delta*zeta**2/6)
-#     T_90_ = int(ceil(params['T_90']/params['dt']))
-#     zeta_ = int(np.floor(zeta/params['dt']))
-#     delta_ = int(ceil((delta-2*zeta)/params['dt']))
-#     Delta_ = int(ceil((Delta-zeta-delta+params['T_180']/2)/params['dt']))
-#     Mono = np.concatenate((np.linspace(0,0,T_90_),
-#                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_),
-#                            np.linspace(0,0,Delta_),
-#                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_)))
-    T_90_ = int(1e5*params['T_90'])
-    zeta_ = int(1e5*zeta)
-    delta_ = int(1e5*(delta-2*zeta))
-    Delta_ = int(1e5*(Delta-zeta-delta+params['T_180']/2))
+    T_90_ = int(ceil(params['T_90']/params['dt']))
+    zeta_ = int(np.floor(zeta/params['dt']))
+    delta_ = int(ceil((delta-2*zeta)/params['dt']))
+    Delta_ = int(ceil((Delta-zeta-delta+params['T_180']/2)/params['dt']))
     Mono = np.concatenate((np.linspace(0,0,T_90_),
                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_),
                            np.linspace(0,0,Delta_),
                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_)))
+#     T_90_ = int(1e5*params['T_90'])
+#     zeta_ = int(1e5*zeta)
+#     delta_ = int(1e5*(delta-2*zeta))
+#     Delta_ = int(1e5*(Delta-zeta-delta+params['T_180']/2))
+#     Mono = np.concatenate((np.linspace(0,0,T_90_),
+#                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_),
+#                            np.linspace(0,0,Delta_),
+#                            np.linspace(0,h,zeta_),np.linspace(h,h,delta_),np.linspace(h,0,zeta_)))
     TE = Mono.size
 
     return Mono, TE, b
@@ -1172,3 +1738,164 @@ def asymmbipolar_diffusion(params):
     TE = AsymmBipolar.size
     
     return AsymmBipolar, TE, b
+
+def maxwell_analysis(G, params, Rot, tensor, B0, position, corr):
+    
+    #COLOR = 'white'
+    #plt.rcParams['text.color'] = COLOR
+    #plt.rcParams['axes.labelcolor'] = COLOR
+    #plt.rcParams['xtick.color'] = COLOR
+    #plt.rcParams['ytick.color'] = COLOR
+    
+    if corr == 0:
+        f, axarr = plt.subplots(3, 3, squeeze=False, figsize=(12, 3*3.5))
+    else:
+        f, axarr = plt.subplots(4, 3, squeeze=False, figsize=(12, 4*3.5))            
+    
+    tt = np.arange(G.size) * params['dt'] * 1e3
+
+    tINV = int(np.floor(params['TE']/params['dt']/1.0e3/2.0))
+    INV = np.ones(G.size)
+    INV[tINV:] = -1
+    GAM = 42.58e3
+    
+    G = G*1000;
+    Desired = np.outer(Rot*tensor,G)              # Desired gradient waveforms
+    Concominant1 = np.zeros(shape=(1,len(G)))     # Concominant gradient matrix x
+    Concominant2 = np.zeros(shape=(1,len(G)))     # Concominant gradient matrix y
+    Concominant3 = np.zeros(shape=(1,len(G)))     # Concominant gradient matrix z
+    Actual = np.zeros(shape=(3,len(G)))     
+    Corrected = np.zeros(shape=(3,len(G)))     
+
+    for i in range(len(G)):
+        tmp1 = np.inner([[Desired[2][i]**2,0,-2*Desired[0][i]*Desired[2][i]],
+                        [0,Desired[2][i]**2,-2*Desired[1][i]*Desired[2][i]],
+                        [-2*Desired[0][i]*Desired[2][i],-2*Desired[1][i]*Desired[2][i],4*Desired[0][i]**2 + 4*Desired[1][i]**2]],(1/(4*B0)))
+        tmp2 = np.reshape(np.inner(tmp1,position),(3,1))
+        Concominant1[0][i] = tmp2[0]
+        Concominant2[0][i] = tmp2[1]
+        Concominant3[0][i] = tmp2[2]
+
+    # Actual gradient waveforms    
+    Actual[0][:] = Desired[0][:] + Concominant1                
+    Actual[1][:] = Desired[1][:] + Concominant2
+    Actual[2][:] = Desired[2][:] + Concominant3
+
+    # Corrected gradient waveforms
+    Corrected[0][:] = Actual[0][:] - Concominant1
+    Corrected[1][:] = Actual[1][:] - Concominant2
+    Corrected[2][:] = Actual[2][:] - Concominant3
+
+    # Plot the Desired Gradients and Desired M0
+    axarr[0,0].plot(tt,Desired[0][:])
+    axarr[0,0].plot(tt,Desired[1][:])
+    axarr[0,0].plot(tt,Desired[2][:])
+    axarr[0,0].set_xlabel('Time [ms]')
+    axarr[0,0].set_ylabel('G [mT/m]')
+    axarr[0,0].set_title('Desired Waveforms')
+    #axarr[0,0].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+   
+    axarr[0,1].plot(tt,GAM*np.cumsum(INV*(Desired[0][:])*params['dt']/1000))
+    axarr[0,1].plot(tt,GAM*np.cumsum(INV*(Desired[1][:])*params['dt']/1000))
+    axarr[0,1].plot(tt,GAM*np.cumsum(INV*(Desired[2][:])*params['dt']/1000))
+    axarr[0,1].set_xlabel('Time [ms]')
+    axarr[0,1].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[0,1].set_title('Desired Zeroth Moment')
+    #axarr[0,1].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+
+    axarr[0,2].plot(tt,GAM*np.cumsum(INV*(Desired[0][:])*params['dt']/1000))
+    axarr[0,2].plot(tt,GAM*np.cumsum(INV*(Desired[1][:])*params['dt']/1000))
+    axarr[0,2].plot(tt,GAM*np.cumsum(INV*(Desired[2][:])*params['dt']/1000))
+    axarr[0,2].set_xlabel('Time [ms]')
+    axarr[0,2].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[0,2].set_title('Desired Zeroth Moment')
+    axarr[0,2].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=1)
+    axarr[0,2].set_xlim(len(G)*params['dt']*1e3-1,len(G)*params['dt']*1e3+1)
+    #axarr[0,2].set_ylim(-1e-3,1e-3)
+
+    # Plot the Concominant Gradients and Concominant M0
+    axarr[1,0].plot(tt,Concominant1.flatten())
+    axarr[1,0].plot(tt,Concominant2.flatten())
+    axarr[1,0].plot(tt,Concominant3.flatten())
+    axarr[1,0].set_xlabel('Time [ms]')
+    axarr[1,0].set_ylabel('G [mT/m]')
+    axarr[1,0].set_title('Concominant Waveforms')
+    #axarr[1,0].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+   
+    axarr[1,1].plot(tt,GAM*np.cumsum(INV*(Concominant1.flatten())*params['dt']/1000))
+    axarr[1,1].plot(tt,GAM*np.cumsum(INV*(Concominant2.flatten())*params['dt']/1000))
+    axarr[1,1].plot(tt,GAM*np.cumsum(INV*(Concominant3.flatten())*params['dt']/1000))
+    axarr[1,1].set_xlabel('Time [ms]')
+    axarr[1,1].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[1,1].set_title('Concominant Zeroth Moment')
+    #axarr[1,1].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+
+    axarr[1,2].plot(tt,GAM*np.cumsum(INV*(Concominant1.flatten())*params['dt']/1000))
+    axarr[1,2].plot(tt,GAM*np.cumsum(INV*(Concominant2.flatten())*params['dt']/1000))
+    axarr[1,2].plot(tt,GAM*np.cumsum(INV*(Concominant3.flatten())*params['dt']/1000))
+    axarr[1,2].set_xlabel('Time [ms]')
+    axarr[1,2].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[1,2].set_title('Concominant Zeroth Moment')
+    #axarr[1,2].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=1)
+    axarr[1,2].set_xlim(len(G)*params['dt']*1e3-1,len(G)*params['dt']*1e3+1)
+    axarr[1,2].set_ylim(-1e-3,1e-3)
+    
+    # Plot the Actual Gradients and Actual M0
+    axarr[2,0].plot(tt,Actual[0][:])
+    axarr[2,0].plot(tt,Actual[1][:])
+    axarr[2,0].plot(tt,Actual[2][:])
+    axarr[2,0].set_xlabel('Time [ms]')
+    axarr[2,0].set_ylabel('G [mT/m]')
+    axarr[2,0].set_title('Actual Waveforms')
+    #axarr[2,0].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+   
+    axarr[2,1].plot(tt,GAM*np.cumsum(INV*(Actual[0][:])*params['dt']/1000))
+    axarr[2,1].plot(tt,GAM*np.cumsum(INV*(Actual[1][:])*params['dt']/1000))
+    axarr[2,1].plot(tt,GAM*np.cumsum(INV*(Actual[2][:])*params['dt']/1000))
+    axarr[2,1].set_xlabel('Time [ms]')
+    axarr[2,1].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[2,1].set_title('Actual Zeroth Moment')
+    #axarr[2,1].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+
+    axarr[2,2].plot(tt,GAM*np.cumsum(INV*(Actual[0][:])*params['dt']/1000))
+    axarr[2,2].plot(tt,GAM*np.cumsum(INV*(Actual[1][:])*params['dt']/1000))
+    axarr[2,2].plot(tt,GAM*np.cumsum(INV*(Actual[2][:])*params['dt']/1000))
+    axarr[2,2].set_xlabel('Time [ms]')
+    axarr[2,2].set_ylabel('$M_{0}$ [mT/m x ms]')
+    axarr[2,2].set_title('Actual Zeroth Moment')
+    #axarr[2,2].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=1)
+    axarr[2,2].set_xlim(len(G)*params['dt']*1e3-1,len(G)*params['dt']*1e3+1)
+    axarr[2,2].set_ylim(-1e-3,1e-3)
+    
+    plt.tight_layout(w_pad=0.0, rect=[0, 0.03, 1.5, 1]) 
+
+    if corr == 1:
+        # Plot the Corrected Gradients and Corrected M0
+        axarr[3,0].plot(tt,Corrected[0][:])
+        axarr[3,0].plot(tt,Corrected[1][:])
+        axarr[3,0].plot(tt,Corrected[2][:])
+        axarr[3,0].set_xlabel('Time [ms]')
+        axarr[3,0].set_ylabel('G [mT/m]')
+        axarr[3,0].set_title('Corrected Waveforms')
+        #axarr[3,0].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+
+        axarr[3,1].plot(tt,GAM*np.cumsum(INV*(Corrected[0][:])*params['dt']/1000))
+        axarr[3,1].plot(tt,GAM*np.cumsum(INV*(Corrected[1][:])*params['dt']/1000))
+        axarr[3,1].plot(tt,GAM*np.cumsum(INV*(Corrected[2][:])*params['dt']/1000))
+        axarr[3,1].set_xlabel('Time [ms]')
+        axarr[3,1].set_ylabel('$M_{0}$ [mT/m x ms]')
+        axarr[3,1].set_title('Corrected Zeroth Moment')
+        #axarr[3,1].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=2)
+
+        axarr[3,2].plot(tt,GAM*np.cumsum(INV*(Corrected[0][:])*params['dt']/1000))
+        axarr[3,2].plot(tt,GAM*np.cumsum(INV*(Corrected[1][:])*params['dt']/1000))
+        axarr[3,2].plot(tt,GAM*np.cumsum(INV*(Corrected[2][:])*params['dt']/1000))
+        axarr[3,2].set_xlabel('Time [ms]')
+        axarr[3,2].set_ylabel('$M_{0}$ [mT/m x ms]')
+        axarr[3,2].set_title('Corrected Zeroth Moment')
+        #axarr[3,2].legend(('$G_{x}$', '$G_{y}$', '$G_{z}$'),prop={'size': 12},labelspacing=-0.1,loc=1)
+        axarr[3,2].set_xlim(len(G)*params['dt']*1e3-1,len(G)*params['dt']*1e3+1)
+        axarr[3,2].set_ylim(-1e-3,1e-3)
+
+    
+    return axarr    
