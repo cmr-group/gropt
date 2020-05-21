@@ -127,14 +127,25 @@ function [ G, lim_break, params ] = gropt( params )
         slew_reg = 1.0;
     end
     
+    if isfield(params, 'gfix')
+        gfix = params.gfix;
+    else
+        gfix = [];
+    end
+    
     
     
     if N0 > 0
         [G, lim_break] = mex_gropt_diff_fixN(gmax, smax, moment_params, TE, T_readout, T_90, T_180, N0, diffmode, ...
         dt_out, pns_thresh, eddy_params, slew_reg);
     elseif dt > 0
-        [G, lim_break] = mex_gropt_diff_fixdt(gmax, smax, moment_params, TE, T_readout, T_90, T_180, dt, diffmode, ...
-        dt_out, pns_thresh, eddy_params, slew_reg);
+        if numel(gfix) > 0
+            [G, lim_break] = mex_gropt_diff_fixdt_fixG(gmax, smax, moment_params, TE, T_readout, T_90, T_180, dt, diffmode, ...
+            dt_out, pns_thresh, eddy_params, slew_reg, gfix);
+        else
+            [G, lim_break] = mex_gropt_diff_fixdt(gmax, smax, moment_params, TE, T_readout, T_90, T_180, dt, diffmode, ...
+            dt_out, pns_thresh, eddy_params, slew_reg);
+        end
     end
 
     

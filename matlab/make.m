@@ -20,3 +20,13 @@ inc_path = ['-I' '../src/'];
 command = ['mex -v CFLAGS="$CFLAGS -std=c11" ' src_files ' ' inc_path];
 
 eval(command);
+
+%%
+src_files = sprintf('../src/%s ' ,src_files_base{:});
+src_files = strtrim(src_files);
+src_files = ['mex_gropt_diff_fixdt_fixG.c' ' ' src_files];
+
+inc_path = ['-I' '../src/'];
+command = ['mex -v CFLAGS="$CFLAGS -std=c11" ' src_files ' ' inc_path];
+
+eval(command);

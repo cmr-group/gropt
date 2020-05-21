@@ -12,6 +12,7 @@ params.dt_out = 10e-6;
 
 [G, lim_break] = gropt(params);
 
+
 plot_waveform(G, params)
 
 %% Diffusion min_TE finder
