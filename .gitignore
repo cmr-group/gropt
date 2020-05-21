@@ -2,6 +2,7 @@
 *.asv
 python/testing/
 python/testing2/
+matlab/vdspiral/
 src/analysis.txt
 src/op_eddy_orig.c
 .vscode/
