@@ -83,9 +83,9 @@ void cvxop_init_G(cvxop_gradient *opG, cvx_mat *G)
 {
     for (int i = 0; i < G->N; i++) {
         if (i < opG->ind_inv) {
-            G->vals[i] = -0.01 * opG->gmax;
+            G->vals[i] = 0.1 * opG->gmax;
         } else {
-            G->vals[i] = 0.01 * opG->gmax;
+            G->vals[i] = -0.1 * opG->gmax;
         }
     }
 

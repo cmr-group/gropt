@@ -55,6 +55,8 @@ params.gfix = gfix;
 [G, T_min] = get_min_TE_gfix(params, 10.0);
 
 %% Plots
+% TODO: Fix units and labels
+
 figure()
 plot(G);
 hold on;
