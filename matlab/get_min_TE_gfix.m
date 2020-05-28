@@ -33,7 +33,7 @@ fprintf('Testing TE =');
 while ((T_range*1e-3) > (dt/4.0))
     TE = T_lo + (T_range)/2.0;
     params.TE = TE;
-    NN = round(TE*1e-3/params.dt);
+    NN = floor(TE*1e-3/params.dt) + 1;
     gfix_p0 = gfix_init(1:block_start-1);
     gfix_p2 = gfix_init(block_stop+1:end);
     gfix_TE = [gfix_p0 ones(1,NN-N_fix)*-99999 gfix_p2];

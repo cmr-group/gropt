@@ -724,7 +724,7 @@ void run_kernel_diff_fixeddt_fixG(double **G_out, int *N_out, double **ddebug, i
                             int N_eddy, double *eddy_params, double search_bval,
                             int N_gfix, double *gfix, double slew_reg)
 {
-    int N = round((TE-T_readout) * 1.0e-3/dt0);
+    int N = (int)((TE-T_readout) * 1.0e-3/dt0) + 1;
     if (N < 5) {
         printf ("\nWARNING: N = %d looks too small, setting to 5\n\n", N);
         N = 5;

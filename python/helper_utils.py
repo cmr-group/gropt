@@ -146,6 +146,63 @@ def get_min_TE_free(params, min_TE, max_TE, verbose = 0):
     return G_out, T_out
 
 
+# def get_min_TE_gfix(params, max_TE, verbose = 0):
+    
+#     dt = params['dt']
+
+#     gfix_init = params['gfix'].copy()
+#     free_vals = (gfix_init<-9999)
+#     dd = np.diff(free_vals)
+#     block_check = np.abs(dd).sum()
+#     if block_check > 2:
+#         print('ERROR: Found more than one consecutive free block in gfix, TE finder not supported yet')
+
+#     N_free = int(free_vals.sum())
+#     N_fix = free_vals.size - N_free
+#     T_fix = N_fix * dt
+#     print('Fixed region of waveform = %f ms' % T_fix*1e3)
+#     block_start = np.where(dd==1)+1
+#     block_stop = np.where(dd==-1)
+
+
+
+
+#     T_lo = min_TE
+#     T_hi = max_TE
+#     T_range = T_hi-T_lo
+
+#     best_time = 999999.9
+
+#     if 'dt' in params:
+        
+#     else:
+#         dt = 1.0e-3/params['N0']
+
+#     if verbose:
+#         print('Testing TE =', end='', flush=True)
+#     while ((T_range*1e-3) > (dt/4.0)): 
+#         params['TE'] = T_lo + (T_range)/2.0
+#         if verbose:
+#             print(' %.3f' % params['TE'], end='', flush=True)
+#         G, ddebug = gropt.gropt(params)
+#         lim_break = ddebug[14]
+#         if lim_break == 0:
+#             T_hi = params['TE']
+#             if T_hi < best_time:
+#                 G_out = G
+#                 T_out = T_hi
+#                 best_time = T_hi
+#         else:
+#             T_lo = params['TE']
+#         T_range = T_hi-T_lo
+
+#     if verbose:
+#         print(' Final TE = %.3f ms' % T_out)
+
+#     return G_out, T_out
+
+
+
 
 def get_stim(G, dt):
     alpha = 0.333

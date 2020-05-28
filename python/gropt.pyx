@@ -176,7 +176,7 @@ def gropt(params, verbose=0):
 
     moment_params = np.array(moment_params)
     eddy_params = np.array(eddy_params)
-    gfix = np.array(gfix)
+    gfix = np.array(gfix) 
     
 
     cdef int N_moments = moment_params.shape[0]
