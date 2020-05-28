@@ -19,7 +19,7 @@ params.gmax = 0.05;
 params.smax = 100.0;
 params.moment_params = [];
 params.moment_params(:,end+1) = [0, 0, 0, -1, -1, 0, 1.0e-4];
-params.moment_params(:,end+1) = [0, 1, 0, -1, -1, 0, 1.0e-4];
+params.moment_params(:,end+1) = [0, 1, 0, -1, -1, 11.74, 1.0e-4];
 params.dt = dt;
 
 % Make the gfix vector, all values that are free to optimize should have
@@ -36,7 +36,7 @@ gfix(1:N_ss) = G_ss;
 
 params.gfix = gfix;
 
-[G, T_min] = get_min_TE_gfix(params, 1.0);
+[G, T_min] = get_min_TE_gfix(params, 2.0);
 
 figure();
 plot(G);
