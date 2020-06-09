@@ -1,20 +1,25 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
-// #include <time.h>
 
+//*******************
+// Everything in the next section is used to time functions in Windows
+// Annoyingly, in pure C this is difficult to do in a cross-platform manner
+//*******************
+
+// #include <time.h>
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
     #include <Windows.h>
 
-    // typedef struct {
-    //     long tv_sec;
-    //     long tv_usec;
-    // } timeval;
+    typedef struct {
+        long tv_sec;
+        long tv_usec;
+    } timeval;
 
-    // typedef struct {
-    //     int tz_minuteswest; 
-    //     int tz_dsttime; 
-    // } timezone;
+    typedef struct {
+        int tz_minuteswest; 
+        int tz_dsttime; 
+    } timezone;
 
     int gettimeofday(struct timeval * tp, int *tzp)
     {
@@ -39,8 +44,6 @@
     #include <sys/time.h>
 #endif
 
-
-
 #include "cvx_matrix.h"
 #include "op_slewrate.h"
 #include "op_moments.h"
@@ -50,11 +53,13 @@
 #include "op_gradient.h"
 #include "op_pns.h"
 #include "op_maxwell.h"
+#include "te_finder.h"
+
 
 #define EDDY_PARAMS_LEN 4
 #define MOMENTS_PARAMS_LEN 7
 
-void test_minTE_diff();
+void test_TE_finders();
 void test_timer();
 
 void cvx_optimize_kernel(cvx_mat *G, cvxop_gradient *opG, cvxop_slewrate *opD, 
@@ -286,6 +291,12 @@ void cvx_optimize_kernel(cvx_mat *G, cvxop_gradient *opG, cvxop_slewrate *opD,
 
             if (diffmode == 0) {
                 is_converged = 1;
+                if ( (count > 0) && (limit_break == 0)) {
+                    if (verbose > 0) {
+                        printf("** Early termination at count = %d for free mode all constraints met\n", count);
+                    }
+                    break;
+                }
             }
 
             if ( (search_bval > 0) && (obj1 > search_bval) && (limit_break == 0)) {
@@ -445,7 +456,7 @@ void interp(cvx_mat *G, double dt_in, double dt_out, double TE, double T_readout
         ti = (dt_out * i) / dt_in;
         
         i0 = floor(ti);
-        if (i0 < 0) {i0 = 0;} // Shouldn't happen unless some weird rounding and floor?
+        if (i0 < 0) {i0 = 0;} // This shouldn't happen unless some weird rounding and floor?
         
         i1 = i0+1;
 
@@ -482,7 +493,8 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
                             int is_Gin, double *G_in, 
                             double search_bval,
                             int N_gfix, double *gfix,
-                            double slew_reg)
+                            double slew_reg,
+                            int Naxis)
 {
     double relax = 1.8;
 
@@ -491,6 +503,7 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
         fflush(stdout);
     }
 
+    /*
     // This is the old style, but I don't think its right for when inversion time doesn't line up with dt
     int ind_inv, ind_end90, ind_start180, ind_end180;
     if (diffmode > 0) {
@@ -504,20 +517,33 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
         ind_start180 = ind_inv;
         ind_end180 = ind_inv;
     }
+    */
     
-    /*
+    
     // Calculate times of inversion and rf dead times
     double t_inv = (N*dt + 1e-3 * T_readout) / 2.0;
     double t_end90 = 1e-3 * T_90;
     double t_start180 = t_inv - T_180*1e-3/2.0;
     double t_stop180 = t_inv + T_180*1e-3/2.0;
     
+    int ind_inv;
+    int ind_end90;
+    int ind_start180;
+    int ind_end180;
+
     // Get indices from times, always rounding in the most conservative direction
-    int ind_inv = round(t_inv/dt);
-    int ind_end90 = ceil(t_end90/dt);
-    int ind_start180 = floor(t_start180/dt);
-    int ind_end180 = ceil(t_stop180/dt);
-    */
+    if (diffmode > 0) {
+        ind_inv = round(t_inv/dt);
+        ind_end90 = ceil(t_end90/dt);
+        ind_start180 = floor(t_start180/dt);
+        ind_end180 = ceil(t_stop180/dt);
+    } else {
+        ind_inv = 9999999;
+        ind_end90 = 0;
+        ind_start180 = ind_inv;
+        ind_end180 = ind_inv;
+    }
+    
 
     if (verbose > 0) {
         printf ("\nN = %d  ind_inv = %d\n90_zeros = %d:%d    180_zeros = %d:%d\n\n", N, ind_inv, 0, ind_end90, ind_start180, ind_end180);
@@ -551,7 +577,7 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
 
     
     cvxop_gradient opG;
-    cvxop_gradient_init(&opG, N, dt, gmax, ind_inv, verbose);
+    cvxop_gradient_init(&opG, N, Naxis, dt, gmax, ind_inv, verbose);
     cvxop_gradient_setFixRange(&opG, 0, ind_end90, 0.0);
     cvxop_gradient_setFixRange(&opG, ind_start180, ind_end180, 0.0);
     if (N_gfix > 0) {
@@ -559,24 +585,19 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
     } 
 
     cvxop_slewrate opD;
-    cvxop_slewrate_init(&opD, N, dt, smax, slew_weight, slew_reg, verbose);
+    cvxop_slewrate_init(&opD, N, Naxis, dt, smax, slew_weight, slew_reg, verbose);
 
     cvxop_pns opP;
-    cvxop_pns_init(&opP, N, dt, ind_inv, PNS_thresh, 1.0, verbose);
+    cvxop_pns_init(&opP, N, Naxis, dt, ind_inv, PNS_thresh, 1.0, verbose);
 
     cvxop_maxwell opX;
     cvxop_maxwell_init(&opX, N, dt, ind_inv, .01, verbose);
     opX.active = 0;
 
     cvxop_moments opQ;
-    cvxop_moments_init(&opQ, N, ind_inv, dt, moments_weight, verbose);
+    cvxop_moments_init(&opQ, N, Naxis, ind_inv, dt, moments_weight, verbose);
     for (int i = 0; i < N_moments; i++) {
-        cvxop_moments_addrow(&opQ, moments_params[MOMENTS_PARAMS_LEN*i+1], 
-                                   moments_params[MOMENTS_PARAMS_LEN*i+5], 
-                                   moments_params[MOMENTS_PARAMS_LEN*i+6],
-                                   moments_params[MOMENTS_PARAMS_LEN*i+2],
-                                   moments_params[MOMENTS_PARAMS_LEN*i+3],
-                                   moments_params[MOMENTS_PARAMS_LEN*i+4]);
+        cvxop_moments_addrow(&opQ, moments_params + (MOMENTS_PARAMS_LEN*i));
     }
     cvxop_moments_finishinit(&opQ);
     
@@ -593,12 +614,12 @@ void run_kernel_diff(double **G_out, int *N_out, double **ddebug, int verbose,
     
     cvx_mat G;
     
-    cvxmat_alloc(&G, N, 1);
+    cvxmat_alloc(&G, N*Naxis, 1);
     cvxmat_setvals(&G, 0.0);
     if (is_Gin == 0) {   
         cvxop_init_G(&opG, &G);
     } else {
-        for (int i = 0; i < N; i++) {
+        for (int i = 0; i < N*Naxis; i++) {
             G.vals[i] = G_in[i];
         }
     }
@@ -652,7 +673,11 @@ void run_kernel_diff_fixedN(double **G_out, int *N_out, double **ddebug, int ver
                             int N_eddy, double *eddy_params, double search_bval, double slew_reg)
 {
     int N = N0;
-    double dt = (TE-T_readout) * 1.0e-3 / (double) N;
+    double dt = (TE-T_readout) * 1.0e-3 / (double) (N-1);
+
+    // struct timeval start, end;
+    // double diff;
+    // gettimeofday(&start, NULL);
 
     run_kernel_diff(G_out, N_out, ddebug, verbose, 
                         N, dt, gmax, smax, TE, 
@@ -662,7 +687,8 @@ void run_kernel_diff_fixedN(double **G_out, int *N_out, double **ddebug, int ver
                         10.0,  dt_out,
                         N_eddy, eddy_params,
                         0, NULL, search_bval,
-                        0, NULL, slew_reg);
+                        0, NULL, slew_reg,
+                        1);
 }
 
 
@@ -683,7 +709,7 @@ void run_kernel_diff_fixedN_Gin(double **G_out, int *N_out, double **ddebug, int
                         10.0,  dt_out,
                         N_eddy, eddy_params,
                         1, G_in, search_bval,
-                        0, NULL, slew_reg);
+                        0, NULL, slew_reg, 1);
 }
 
 
@@ -693,7 +719,7 @@ void run_kernel_diff_fixeddt(double **G_out, int *N_out, double **ddebug, int ve
                             double dt0, double gmax, double smax, double TE,
                             int N_moments, double *moments_params, double PNS_thresh, 
                             double T_readout, double T_90, double T_180, int diffmode, double dt_out,
-                            int N_eddy, double *eddy_params, double search_bval, double slew_reg)
+                            int N_eddy, double *eddy_params, double search_bval, double slew_reg, int Naxis)
 {
     int N = round((TE-T_readout) * 1.0e-3/dt0);
     if (N < 5) {
@@ -704,6 +730,10 @@ void run_kernel_diff_fixeddt(double **G_out, int *N_out, double **ddebug, int ve
     // double dt = (TE-T_readout) * 1.0e-3 / (double) N;
     double dt = dt0;
 
+    // struct timeval start, end;
+    // double diff;
+    // gettimeofday(&start, NULL);
+
     run_kernel_diff(G_out, N_out, ddebug, verbose,
                             N, dt, gmax, smax, TE, 
                             N_moments, moments_params, PNS_thresh,
@@ -712,8 +742,14 @@ void run_kernel_diff_fixeddt(double **G_out, int *N_out, double **ddebug, int ve
                             10.0,  dt_out,
                             N_eddy, eddy_params,
                             0, NULL, search_bval,
-                            0, NULL, slew_reg);
+                            0, NULL, slew_reg, Naxis);
 
+    // gettimeofday(&end, NULL);
+    // diff = (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
+    // if (verbose > 0) {
+    //     printf("\nOperation took %f ms (%f ms total)\n", (1.0e3*diff), 1.0e3*diff);
+    // }
+    // (*ddebug)[15] = diff;
 }
 
 
@@ -737,123 +773,13 @@ void run_kernel_diff_fixeddt_fixG(double **G_out, int *N_out, double **ddebug, i
                             N, dt, gmax, smax, TE, 
                             N_moments, moments_params, PNS_thresh,
                             T_readout, T_90, T_180, diffmode,
-                            1.0, 1.0, 100.0, 
+                            1.0, 1.0, 10.0, 
                             10.0,  dt_out,
                             N_eddy, eddy_params,
                             0, NULL, search_bval,
-                            N_gfix, gfix, slew_reg);
+                            N_gfix, gfix, slew_reg, 1);
 
 }
-
-
-void minTE_diff(double **G_out, int *N_out, double **ddebug, int verbose,
-                double dt0, double gmax, double smax, double search_bval,
-                int N_moments, double *moments_params, double PNS_thresh, 
-                double T_readout, double T_90, double T_180, int diffmode, double dt_out,
-                int N_eddy, double *eddy_params, double slew_reg)
-{
-    int N;
-    double TE;
-    double dt;
-    double bval;
-    double best_TE = 999.0;
-
-    double T_lo = 0.0;
-    double T_hi = 256.0;
-    double T_range = T_hi-T_lo;
-
-    // double dt = (TE-T_readout) * 1.0e-3 / (double) N;
-    // double dt = dt0;
-
-    N = 80;
-    
-    for (int i = 0; i < 6; i++) {
-        TE = T_lo + (T_range)/2.0;
-        dt = (TE-T_readout) * 1.0e-3 / (double) N;
-        
-        run_kernel_diff(G_out, N_out, ddebug, verbose,
-                        N, dt, gmax, smax, TE, 
-                        N_moments, moments_params, PNS_thresh,
-                        T_readout, T_90, T_180, diffmode,
-                        1.0, 1.0, 100.0, 
-                        10.0,  dt_out,
-                        N_eddy, eddy_params,
-                        0, NULL, search_bval,
-                        0, NULL, slew_reg);
-        bval = (*ddebug)[13];
-        
-        if (verbose > 0) {printf ("Search at TE = %.2f gave bval = %.1f  T_range = %.2f\n", TE, bval, T_range);}
-        if (bval > search_bval) {
-            T_hi = TE;
-            if (T_hi < best_TE) {
-                best_TE = T_hi;
-                if (verbose > 0) {printf ("Best TE = %.2f\n", best_TE);}
-            }
-        } else {
-            T_lo = TE;
-        }
-        T_range = T_hi - T_lo;
-        
-    }
-    
-    if (verbose > 0) {printf ("\n***Second Round***\n\n");}
-
-
-    T_lo = best_TE - 4.0;
-    T_hi = best_TE + 4.0;
-    T_range = T_hi-T_lo;
-
-    dt = dt0;
-
-    for (int i = 0; i < 6; i++) {
-        TE = T_lo + (T_range)/2.0;
-        N = round((TE-T_readout) * 1.0e-3/dt0);
-        
-        run_kernel_diff(G_out, N_out, ddebug, verbose,
-                        N, dt, gmax, smax, TE, 
-                        N_moments, moments_params, PNS_thresh,
-                        T_readout, T_90, T_180, diffmode,
-                        1.0, 1.0, 100.0, 
-                        10.0,  dt_out,
-                        N_eddy, eddy_params,
-                        0, NULL, search_bval,
-                        0, NULL, slew_reg);
-        bval = (*ddebug)[13];
-        
-        if (verbose > 0) {printf ("Search at TE = %.2f gave bval = %.1f  T_range = %.2f\n", TE, bval, T_range);}
-        if (bval > search_bval) {
-            T_hi = TE;
-            if (T_hi < best_TE) {
-                best_TE = T_hi;
-                if (verbose > 0) {printf ("Best TE = %.2f\n", best_TE);}
-            }
-        } else {
-            T_lo = TE;
-        }
-        T_range = T_hi - T_lo;
-        
-    }
-
-    if (verbose > 0) {printf ("\n***Final***\n\n");}
-
-    TE = best_TE;
-    N = round((TE-T_readout) * 1.0e-3/dt0);
-    
-    run_kernel_diff(G_out, N_out, ddebug, verbose,
-                    N, dt, gmax, smax, TE, 
-                    N_moments, moments_params, PNS_thresh,
-                    T_readout, T_90, T_180, diffmode,
-                    1.0, 1.0, 100.0, 
-                    10.0,  dt_out,
-                    N_eddy, eddy_params,
-                    0, NULL, -1.0,
-                    0, NULL, slew_reg);
-    bval = (*ddebug)[13];
-    
-    if (verbose > 0) {printf ("Search at TE = %.2f gave bval = %.1f  T_range = %.2f\n", TE, bval, T_range);}
-}
-
-
 
 
 int main (void)
@@ -861,15 +787,16 @@ int main (void)
     printf ("In optimize_kernel.c main function\n");
     
     // test_timer();
-    test_minTE_diff();
-
+    test_TE_finders();
     return 0;
 }
 
 
-void test_minTE_diff()
+// This example shows the fast TE finders, which can scan different TE values quickly by
+// performing quick initial searches and using multiple threads to seach multiple TE at once
+void test_TE_finders()
 {
-        // 1 = betamax
+    // 1 = betamax
     // 2 = bval max
     int diffmode = 2;
 
@@ -882,24 +809,12 @@ void test_minTE_diff()
 
     int N_moments = 3; 
     double *moment_params = (double *)malloc(N_moments*7*sizeof(double));
-    
-    // M0 Nulling
-    int ii = 0;
-    moment_params[ii+0] = 0; moment_params[ii+1] = 0; moment_params[ii+2] = 0; 
-    moment_params[ii+3] = -1; moment_params[ii+4] = -1; 
-    moment_params[ii+5] = 0; moment_params[ii+6] = 1.0e-3;
-    
-    // M1 Nulling
-    ii = 7;
-    moment_params[ii+0] = 0; moment_params[ii+1] = 1; moment_params[ii+2] = 0; 
-    moment_params[ii+3] = -1; moment_params[ii+4] = -1; 
-    moment_params[ii+5] = 0; moment_params[ii+6] = 1.0e-3;
-
-    // M2 Nulling
-    ii = 14;
-    moment_params[ii+0] = 0; moment_params[ii+1] = 2; moment_params[ii+2] = 0; 
-    moment_params[ii+3] = -1; moment_params[ii+4] = -1; 
-    moment_params[ii+5] = 0; moment_params[ii+6] = 1.0e-3;
+    for (int i = 0; i < N_moments; i++) {
+        int ii = i*7;
+        moment_params[ii+0] = 0; moment_params[ii+1] = i; moment_params[ii+2] = 0; 
+        moment_params[ii+3] = -1; moment_params[ii+4] = -1; 
+        moment_params[ii+5] = 0; moment_params[ii+6] = 1.0e-3;
+    }
 
     double PNS_thresh = -1.0;
 
@@ -918,23 +833,35 @@ void test_minTE_diff()
 
     struct timeval start, end;
     double diff;
-    gettimeofday(&start, NULL);
 
+
+    // openMP TE finder example
+    gettimeofday(&start, NULL);
+    minTE_diff_par(&G, &N, &debug, 0, dt, gmax, smax, bval, 
+                        N_moments, moment_params, PNS_thresh, 
+                            T_readout, T_90, T_180, diffmode, dt_out, N_eddy, eddy_params, 1.0);
+
+    gettimeofday(&end, NULL);
+    diff = (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
+    printf("OpenMP operation took %.2f ms (TE = %.2f ms)\n", (1.0e3*diff), 1.0e3*N*dt);
+
+
+    // Single thread TE finder example
+    gettimeofday(&start, NULL);
     minTE_diff(&G, &N, &debug, 0, dt, gmax, smax, bval, 
                         N_moments, moment_params, PNS_thresh, 
                             T_readout, T_90, T_180, diffmode, dt_out, N_eddy, eddy_params, 1.0);
 
     gettimeofday(&end, NULL);
     diff = (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
-    printf("\nOperation took %f ms (%f ms total)\n", (1.0e3*diff), 1.0e3*diff);
+    printf("Non-threaded operation took %.2f ms (TE = %.2f ms)\n", (1.0e3*diff), 1.0e3*N*dt);
 
     return;
 }
 
-
 void test_timer()
 {
-        // 1 = betamax
+    // 1 = betamax
     // 2 = bval max
     int diffmode = 2;
 
@@ -942,8 +869,16 @@ void test_timer()
     int N;
     double *debug;
 
-    int N_eddy = 0; 
-    double *eddy_params;
+    // int N_eddy = 1; 
+    // double *eddy_params;
+    
+    int N_eddy = 1; 
+    double *eddy_params = (double *)malloc(4*sizeof(double));
+    eddy_params[0] = 50.0;
+    eddy_params[1] = 0.0;
+    eddy_params[2] = 1.0e-4;
+    eddy_params[3] = 0.0;
+
 
     int N_moments = 3; 
     double *moment_params = (double *)malloc(21*sizeof(double));
@@ -962,7 +897,7 @@ void test_timer()
     moment_params[ii+3] = -1; moment_params[ii+4] = -1; 
     moment_params[ii+5] = 0; moment_params[ii+6] = 1.0e-3;
 
-    double PNS_thresh = -1.0;
+    double PNS_thresh = 1.0;
 
     double dt = 100e-6;
     double gmax = .05;
@@ -976,20 +911,20 @@ void test_timer()
     // double dt_out = 10.0e-6;
     double dt_out = -1.0;
 
-    int N_time = 6;
-    struct timeval start, end;
-    double diff;
-    gettimeofday(&start, NULL);
+    int N_time = 10;
+    // struct timeval start, end;
+    // double diff;
+    // gettimeofday(&start, NULL);
 
     for (int i = 0; i < N_time; i++) {
         run_kernel_diff_fixeddt(&G, &N, &debug, 1, dt, gmax, smax, TE, 
                             N_moments, moment_params, PNS_thresh, 
-                                T_readout, T_90, T_180, diffmode, dt_out, N_eddy, eddy_params, 100.0, 1.0);
+                            T_readout, T_90, T_180, diffmode, dt_out, N_eddy, eddy_params, 100.0, 1.0, 1);
     }
 
-    gettimeofday(&end, NULL);
-    diff = (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
-    printf("\nOperation took %f ms (%f ms total)\n", (1.0e3*diff/N_time), 1.0e3*diff);
+    // gettimeofday(&end, NULL);
+    // diff = (end.tv_sec - start.tv_sec) + 1.0e-6 * (end.tv_usec - start.tv_usec);
+    // printf("\nOperation took %f ms (%f ms total)\n", (1.0e3*diff/N_time), 1.0e3*diff);
 
     return;
 }
