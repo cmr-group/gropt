@@ -9,9 +9,6 @@ g_ss = .0070;
 N_ss = round(1.375/(g_ss*dt)*1e-6);
 G_ss = ones(1, N_ss) .* g_ss;
 
-figure()
-plot(G_ss)
-
 %% Compute flow comped refocuser
 params = struct;
 params.mode = 'free';
@@ -19,7 +16,7 @@ params.gmax = 0.05;
 params.smax = 100.0;
 params.moment_params = [];
 params.moment_params(:,end+1) = [0, 0, 0, -1, -1, 0, 1.0e-4];
-params.moment_params(:,end+1) = [0, 1, 0, -1, -1, 11.74, 1.0e-4];
+params.moment_params(:,end+1) = [0, 1, 0, -1, -1, 0.0, 1.0e-4];
 params.dt = dt;
 
 % Make the gfix vector, all values that are free to optimize should have
@@ -46,7 +43,7 @@ Nm = 2;
 
 tvec = (0:numel(G)-1)*dt*1e3; 
 tMat = zeros( Nm, numel(G) );
-for mm=1:Nm,
+for mm=1:Nm
     tMat( mm, : ) = tvec.^(mm-1);
 end
 

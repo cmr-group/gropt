@@ -11,7 +11,7 @@ t_ss = numel(G_ss) * dt;
 tvec = (0:numel(G_ss)-1)*dt*1e3; % in msec
 % tMat for all moments
 tMat = zeros( Nm, numel(G_ss) );
-for mm=1:Nm,
+for mm=1:Nm
     tMat( mm, : ) = tvec.^(mm-1);
 end
 moments_ss = (1e3*1e3*dt*tMat*(G_ss'));
@@ -19,7 +19,7 @@ moments_ss = (1e3*1e3*dt*tMat*(G_ss'));
 M0ss = moments_ss(1);
 M1ss = moments_ss(2);
 %% Compute flow comped refocuser
-% note that t_ss has been added to the third spot in moment params
+% Note that t_ss has been added to the third spot in moment params
 % this tells the optimizer that the first point in the waveform is actually
 % at t = t_tss instead of 0
 params = struct;
@@ -40,7 +40,7 @@ plot(G)
 
 tvec = (0:numel(G)-1)*dt*1e3; 
 tMat = zeros( Nm, numel(G) );
-for mm=1:Nm,
+for mm=1:Nm
     tMat( mm, : ) = tvec.^(mm-1);
 end
 

@@ -1,6 +1,24 @@
 function res = get_min_TE_diff( target_bval, min_TE, max_TE, params )
-%GET_MIN_TE Summary of this function goes here
-%   Detailed explanation goes here
+%GET_MIN_TE Finds the shortest diffusion waveform for a given b-value
+%   
+%    Does a bisecting linesearch in the given TE range, trying to find the
+%    shortest feasible waveform with the correct b-value
+%         
+%    Parameters
+%    ----------
+%    target_bval
+%        The bvalue to search for
+%    min_TE
+%        The start of the search range [ms]
+%    max_TE
+%        The end of the search range [ms]
+%    params
+%        This is the standard gropt paramater struct
+% 
+%   Returns
+%   -------
+%   res
+%       This is the output gradient waveform vector
 
 if isfield(params, 'dt_out')
     dt = params.dt_out;

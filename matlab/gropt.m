@@ -1,6 +1,23 @@
 function [ G, lim_break, params ] = gropt( params )
-%GROPT_HELPER Summary of this function goes here
-%   Detailed explanation goes here
+%GROPT calls the gropt mex functions and returns waveforms. 
+%   
+%    This does a lot of checks and conversions on the params struct, and
+%    then calls the right gropt mex function.
+%         
+%    Parameters
+%    ----------
+%    params
+%        struct containing all of the GrOpt constraint parameters
+%
+%   Returns
+%   -------
+%   G
+%       This is the output gradient waveform vector
+%   lim_break
+%       This will return 0 if the waveform is feasible, 1 if not
+%   params
+%       Returns a copy of the params struct, which is changed by this
+%       function in certain scenarios (this is mostly in TE searches)
 
     if isfield(params, 'mode')
         mode = params.mode;

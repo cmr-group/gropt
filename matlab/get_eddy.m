@@ -3,7 +3,7 @@ function [all_lam, all_e] = get_eddy(lam_max, G, dt)
 %   Detailed explanation goes here
 
 N_lam = 200;
-all_lam = linspace(1e-3,lam_max,N_lam);
+all_lam = linspace(1e-4,lam_max,N_lam);
 all_e = zeros(1, N_lam);
 ii = 1;
 for lam = all_lam
