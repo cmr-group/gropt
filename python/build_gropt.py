@@ -1,6 +1,13 @@
-import os, sys, subprocess
+import os 
+import sys 
+import subprocess
 
-def build_gropt(debug = False):
+
+def build_gropt():
+    """Tries to build the GrOpt library
+    """
+
+    print('Building GrOpt . . .')
     cwd = os.getcwd()
     gropt_path = os.getcwd().rsplit('python', 1)[0] + 'python'
     imported = False
@@ -10,6 +17,7 @@ def build_gropt(debug = False):
         print(gropt_path, cwd)
         os.chdir(gropt_path)
 
+    # Run the compilation
     out = subprocess.run(["python", "setup.py", "build_ext", "--inplace"], stdout=subprocess.PIPE)
 
     try:

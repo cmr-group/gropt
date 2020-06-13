@@ -89,7 +89,7 @@ def get_min_TE_diff(params, target_bval, min_TE, max_TE, verbose = 0):
     while ((T_range*1e-3) > (dt/4.0)): 
         params['TE'] = T_lo + (T_range)/2.0
         if verbose:
-            print(' %.3f' % params['TE'], end='', flush=True)
+            print(' %.2f' % params['TE'], end='', flush=True)
         G, ddebug = gropt.gropt(params)
         lim_break = ddebug[14]
         bval = get_bval(G, params)
@@ -451,7 +451,7 @@ def plot_waveform(G, params, plot_moments = True, plot_eddy = True, plot_pns = T
         axarr[i_row, i_col].axhline(linestyle='--', color='0.7')
         axarr[i_row, i_col].plot(all_lam, all_e)
         axarr[i_row, i_col].set_title('Eddy')
-        axarr[i_row, i_col].set_xlabel('\lambda [ms]')
+        axarr[i_row, i_col].set_xlabel(r'$\lambda$ [ms]')
     #     axarr[i_row, i_col].set_ylabel(' [AU]')
         i_col += 1
         if i_col >= N_cols:
