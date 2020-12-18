@@ -28,6 +28,9 @@ function [ G, lim_break, params ] = gropt( params )
     
     if isfield(params, 'gmax')
         gmax = params.gmax;
+        if gmax > 1
+            gmax = gmax * 1e-3;
+        end
     else
         fprintf('ERROR: params.gmax does not exist.\n');
         return
@@ -42,27 +45,42 @@ function [ G, lim_break, params ] = gropt( params )
     
     % TODO: make TE a better distinction between diffusion and free modes
     if isfield(params, 'TE')
-        TE = params.TE;
+        TE = params.TE; 
+    elseif isfield(params, 'T')
+        TE = params.T;
     else
         fprintf('ERROR: params.TE does not exist.\n');
         return
     end
     
+    if TE < 1
+        TE = TE * 1e3;
+    end
+    
     if strcmp(mode, 'diff_bval') || strcmp(mode, 'diff_beta')
         if isfield(params, 'T_90')
             T_90 = params.T_90;
+            if T_90 < .1
+                T_90 = T_90 * 1e3;
+            end
         else
             fprintf('ERROR: params.T_90 does not exist.\n');
             return
         end
         if isfield(params, 'T_180')
             T_180 = params.T_180;
+            if T_180 < .1
+                T_180 = T_180 * 1e3;
+            end
         else
             fprintf('ERROR: params.T_180 does not exist.\n');
             return
         end
         if isfield(params, 'T_readout')
             T_readout = params.T_readout;
+            if T_readout < .1
+                T_readout = T_readout * 1e3;
+            end
         else
             fprintf('ERROR: params.T_readout does not exist.\n');
             return
@@ -87,6 +105,14 @@ function [ G, lim_break, params ] = gropt( params )
         T_180 = 0.0;
         if isfield(params, 'moment_params')
             moment_params = params.moment_params;
+        elseif isfield(params, 'M0')
+            moment_params = [];
+            moment_params(:,end+1) = [0, 0, 0, -1, -1, params.M0, 1.0e-4];
+            if isfield(params, 'M1')
+                moment_params(:,end+1) = [0, 1, 0, -1, -1, params.M1, 1.0e-4];
+            end
+            
+            
         else
             fprintf('ERROR: params.moment_params does not exist.\n');
             return
